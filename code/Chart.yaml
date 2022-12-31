@@ -1,0 +1,7 @@
+apiVersion: v2
+name: code
+description: code-server with dind sidecar and optional nginx proxy
+sources:
+- https://docs.linuxserver.io/images/docker-code-server
+- https://hub.docker.com/_/docker/tags?page=1&name=dind
+version: 1.0.0

@@ -1,0 +1,117 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: code
+  namespace: {{ .Release.namespace }}
+  labels:
+    app: code
+spec:
+  replicas: 1
+  serviceName: code
+  selector:
+    matchLabels:
+      app: code
+  template:
+    metadata:
+      labels:
+        app: code
+    spec:
+      containers:
+      {{ if .Values.nginx.enabled }}
+      - name: nginx
+        image: nginx:stable
+        ports:
+        - containerPort: 9443
+        volumeMounts:
+        - name: nginx-conf
+          mountPath: /etc/nginx
+        {{ if .Values.nginx.selfsigned }}
+        - name: nginx-secret
+          mountPath: /etc/nginx/certs
+        {{ end }}
+      {{ end }}
+      - name: code
+        image: linuxserver/code-server:4.9.1
+        env:
+        {{ if .Values.dind.enabled }}
+        - name: DOCKER_HOST
+          value: unix:///var/log/docker.sock
+        - name: DIND_ENABLED
+          value: "true"
+        {{ end }}
+        {{ if .Values.code.go.enabled }}
+        - name: GO_ENABLED
+          value: "true"
+        - name: GO_VERSION
+          value: {{ .Values.code.go.version }}
+        {{ end }}
+        - name: SUDO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: code-passwd
+              key: password
+              optional: false
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: code-passwd
+              key: password
+              optional: false
+        volumeMounts:
+        - name: code-conf
+          mountPath: /custom-cont-init.d
+        - name: code-storage
+          mountPath: /config
+        - name: docker-socket
+          mountPath: /var/run
+        - name: docker-storage
+          mountPath: /var/lib/docker
+      {{ if .Values.dind.enabled }}
+      - name: dind-daemon
+        image: docker:dind
+        resources:
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: docker-storage
+          mountPath: /var/lib/docker
+        - name: docker-socket
+          mountPath: /var/run
+      {{ end }}
+      volumes:
+      - name: code-conf
+        configMap:
+          name: code-conf
+      - name: docker-socket
+        emptyDir: {}
+      {{ if .Values.nginx.enabled }}
+      - name: nginx-conf
+        configMap:
+          name: nginx-conf
+      {{ if .Values.nginx.selfsigned }}
+      - name: nginx-secret
+        secret:
+          secretName: code-tls
+          optional: false
+      {{ end }}
+      {{ end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: code-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.code.storageClassSize }}
+      storageClassName: {{ .Values.persistence.code.storageClassName }}
+  {{ if .Values.dind.enabled }}
+  - metadata:
+      name: docker-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.docker.storageClassSize }}
+      storageClassName: {{ .Values.persistence.docker.storageClassName }}
+  {{ end }}

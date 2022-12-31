@@ -1,0 +1,19 @@
+code:
+  go:
+    enabled: true
+    version: 1.19.4
+
+dind:
+  enabled: true
+
+nginx:
+  enabled: true
+  selfsigned: true
+
+persistence:
+  code:
+    storageClassName: standard
+    storageClassSize: 5Gi
+  docker:
+    storageClassName: standard
+    storageClassSize: 5Gi

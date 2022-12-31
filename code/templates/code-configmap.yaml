@@ -1,0 +1,99 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-conf
+  namespace: {{ .Release.namespace }}
+data:
+  init: |
+    #!/bin/bash
+
+    # passwordless sudo
+    echo "INFO: passwordless sudo"
+    echo $SUDO_PASSWORD | sudo -S -k sed -i -e 's#abc ALL=(ALL:ALL) ALL#abc ALL=(ALL) NOPASSWD:ALL#' /etc/sudoers
+
+    # system packages
+    echo "INFO: installing system packages"
+    DEBIAN_FRONTEND="noninteractive"; export DEBIAN_FRONTEND
+    sudo apt-get update
+    sudo apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        python3 \
+        python3-pip \
+        python-is-python3 \
+        software-properties-common
+
+    # code extensions
+    printf "INFO: installing code extensions"
+    extensions="golang.go hashicorp.terraform ms-python.python ms-azuretools.vscode-docker ms-vscode.makefile-tools redhat.vscode-yaml"
+    export extensions
+    for extension in $extensions; do
+        /app/code-server/lib/node /app/code-server --extensions-dir /config/extensions --install-extension "$extension" &
+    done
+    while true; do
+        jobs | grep "Running"
+        if [ "$?" -eq 0 ]; then
+            printf "."
+        else
+            echo "done."
+            break
+        fi
+        sleep 3
+    done
+
+    echo "INFO: validating extensions"
+    for extension in $extensions; do
+        /app/code-server/lib/node /app/code-server --extensions-dir /config/extensions --list-extensions | grep --quiet "$extension"
+        if [ "$?" -eq 0 ]; then
+            echo "INFO: $extension OK"
+        else
+            echo "ERROR: $extension NOT FOUND"
+            exit 1
+        fi
+    done
+
+    # docker per https://docs.docker.com/engine/install/ubuntu/#set-up-the-repository
+    if [ $DIND_ENABLED == "true" ]; then
+        echo "INFO: installing docker"
+        sudo mkdir -p /etc/apt/keyrings
+        sudo bash -c "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        sudo bash -c "echo \
+        \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+        $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list"
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends docker-ce docker-ce-cli docker-compose-plugin
+        sudo usermod -aG docker abc
+        sudo chown abc /var/run/docker.sock
+
+        # validate docker
+        until DOCKER_HOST=unix:///var/run/docker.sock docker run hello-world; do
+            echo "INFO: validating docker"
+            sleep 1
+        done
+    else
+        echo "INFO: DIND_ENABLED != true; skipping"
+    fi
+
+    # go per https://go.dev/doc/install
+    if [ $GO_ENABLED == "true" ]; then
+        echo "INFO: installing go"
+        sudo rm -rf /usr/local/go
+        curl -sL https://go.dev/dl/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz --output ~/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz
+        sudo tar -C /usr/local -xzf ~/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz
+        rm -f ~/go$GO_VERSION.linux-$(dpkg --print-architecture).tar.gz
+
+        grep --quiet '/usr/local/go/bin' ~/.profile
+        if [ "$?" -eq 0 ]; then
+            echo "INFO: go in PATH"
+        else
+            echo "INFO: adding go to PATH"
+            echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
+        fi
+    else
+        echo "INFO: GO_ENABLED != true; skipping"
+    fi
+
+    echo "INFO: init script complete"
