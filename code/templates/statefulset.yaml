@@ -34,18 +34,16 @@ spec:
       - name: code
         image: linuxserver/code-server:4.9.1
         env:
-        {{ if .Values.dind.enabled }}
-        - name: DOCKER_HOST
-          value: unix:///var/log/docker.sock
         - name: DIND_ENABLED
-          value: "true"
-        {{ end }}
-        {{ if .Values.code.go.enabled }}
+          value: {{ .Values.dind.enabled | quote }}
+        - name: EXTENSIONS_ENABLED
+          value: {{ .Values.code.extensions.enabled | quote }}
         - name: GO_ENABLED
-          value: "true"
+          value: {{ .Values.code.go.enabled | quote }}
         - name: GO_VERSION
-          value: {{ .Values.code.go.version }}
-        {{ end }}
+          value: {{ .Values.code.go.version | quote }}
+        - name: PYTHON_ENABLED
+          value: {{ .Values.code.python.enabled | quote }}
         - name: SUDO_PASSWORD
           valueFrom:
             secretKeyRef:

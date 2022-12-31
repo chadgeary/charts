@@ -1,7 +1,11 @@
 code:
+  extensions:
+    enabled: true
   go:
     enabled: true
     version: 1.19.4
+  python:
+    enabled: true
 
 dind:
   enabled: true
